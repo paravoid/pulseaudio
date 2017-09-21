@@ -359,7 +359,9 @@ static pa_hook_result_t profile_available_hook_callback(pa_core *c, pa_card_prof
         return PA_HOOK_OK;
 
     /* Do not automatically switch profiles for headsets, just in case */
-    if (pa_streq(profile->name, "a2dp_sink") || pa_streq(profile->name, "headset_head_unit"))
+    if (pa_streq(profile->name, "a2dp_sink") ||
+        pa_streq(profile->name, "headset_head_unit") ||
+        pa_streq(profile->name, "headset_handsfree"))
         return PA_HOOK_OK;
 
     is_active_profile = card->active_profile == profile;
