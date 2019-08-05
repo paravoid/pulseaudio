@@ -38,7 +38,7 @@ PA_MODULE_LOAD_ONCE(true);
 PA_MODULE_USAGE(
         "auto_switch=<Switch between HFP/HSP and A2DP profile? (0 - never, 1 - media.role=phone, 2 - heuristic> "
         "a2dp_source=<Handle a2dp_source card profile (sink role)?> "
-        "ag=<Handle headset_audio_gateway card profile (headset role)?> ");
+        "ag=<Handle audio gateway card profile (headset role)?> ");
 
 static const char* const valid_modargs[] = {
     "auto_switch",
@@ -87,7 +87,9 @@ static pa_hook_result_t source_put_hook_callback(pa_core *c, pa_source *source, 
 
     if (u->enable_a2dp_source && pa_streq(s, "a2dp_source"))
         role = "music";
-    else if (u->enable_ag && pa_streq(s, "headset_audio_gateway"))
+    else if (u->enable_ag &&
+             (pa_streq(s, "headset_audio_gateway") ||
+              pa_streq(s, "handsfree_audio_gateway")))
         role = "phone";
     else {
         pa_log_debug("Profile %s cannot be selected for loopback", s);
@@ -126,7 +128,9 @@ static pa_hook_result_t sink_put_hook_callback(pa_core *c, pa_sink *sink, void *
     if (!s)
         return PA_HOOK_OK;
 
-    if (u->enable_ag && pa_streq(s, "headset_audio_gateway"))
+    if (u->enable_ag &&
+        (pa_streq(s, "headset_audio_gateway") ||
+         pa_streq(s, "handsfree_audio_gateway")))
         role = "phone";
     else {
         pa_log_debug("Profile %s cannot be selected for loopback", s);

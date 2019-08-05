@@ -195,8 +195,9 @@ static bool device_supports_profile(pa_bluetooth_device *device, pa_bluetooth_pr
         case PA_BLUETOOTH_PROFILE_HFP_HF:
             return show_hfp && !!pa_hashmap_get(device->uuids, PA_BLUETOOTH_UUID_HFP_HF);
         case PA_BLUETOOTH_PROFILE_HSP_AG:
-            return !!pa_hashmap_get(device->uuids, PA_BLUETOOTH_UUID_HSP_AG)
-                || !!pa_hashmap_get(device->uuids, PA_BLUETOOTH_UUID_HFP_AG);
+            return !!pa_hashmap_get(device->uuids, PA_BLUETOOTH_UUID_HSP_AG);
+        case PA_BLUETOOTH_PROFILE_HFP_AG:
+            return !!pa_hashmap_get(device->uuids, PA_BLUETOOTH_UUID_HFP_AG);
         case PA_BLUETOOTH_PROFILE_OFF:
             pa_assert_not_reached();
     }
@@ -1049,7 +1050,7 @@ void pa_bluetooth_discovery_set_ofono_running(pa_bluetooth_discovery *y, bool is
         pa_bluetooth_device *d;
 
         PA_HASHMAP_FOREACH(d, y->devices, state) {
-            if (device_supports_profile(d, PA_BLUETOOTH_PROFILE_HSP_AG)) {
+            if (device_supports_profile(d, PA_BLUETOOTH_PROFILE_HFP_AG)) {
                 DBusMessage *m;
 
                 pa_assert_se(m = dbus_message_new_method_call(BLUEZ_SERVICE, d->path, "org.bluez.Device1", "Disconnect"));
@@ -1299,6 +1300,8 @@ const char *pa_bluetooth_profile_to_string(pa_bluetooth_profile_t profile) {
             return "headset_audio_gateway";
         case PA_BLUETOOTH_PROFILE_HFP_HF:
             return "handsfree";
+        case PA_BLUETOOTH_PROFILE_HFP_AG:
+            return "handsfree_audio_gateway";
         case PA_BLUETOOTH_PROFILE_OFF:
             return "off";
     }
