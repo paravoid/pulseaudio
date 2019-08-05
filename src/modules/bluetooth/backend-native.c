@@ -53,11 +53,6 @@ struct transport_data {
     pa_mainloop_api *mainloop;
 };
 
-struct hfp_config {
-    uint32_t capabilities;
-    int state;
-};
-
 /*
  * the separate handsfree headset (HF) and Audio Gateway (AG) features
  */
@@ -167,7 +162,7 @@ static void hfp_send_features(int fd)
 {
     char buf[512];
 
-    sprintf(buf, "+BRSF: %d", hfp_features);
+    sprintf(buf, "+BRSF: %u", hfp_features);
     rfcomm_write(fd, buf);
 }
 
@@ -408,6 +403,10 @@ static void register_profile(pa_bluetooth_backend *b, const char *profile, const
         /* HSP version 1.2 */
         version = 0x0102;
         pa_dbus_append_basic_variant_dict_entry(&d, "Version", DBUS_TYPE_UINT16, &version);
+    } else if (pa_streq (uuid, PA_BLUETOOTH_UUID_HFP_AG)) {
+        /* HFP version 1.6 */
+        version = 0x0106;
+        pa_dbus_append_basic_variant_dict_entry(&d, "Version", DBUS_TYPE_UINT16, &version);
     }
     dbus_message_iter_close_container(&i, &d);
 
@@ -430,6 +429,10 @@ static bool hfp_rfcomm_handle(int fd, pa_bluetooth_transport *t, const char *buf
     if (c->state == 0 && sscanf(buf, "AT+BRSF=%d", &val) == 1) {
           c->capabilities = val;
           pa_log_info("HFP capabilities returns 0x%x", val);
+          if (val & HFP_HF_RVOL) {
+              c->speaker_gain_supported = true;
+              c->mic_gain_supported = false;
+          }
           hfp_send_features(fd);
           c->state = 1;
           return true;
@@ -457,7 +460,7 @@ static bool hfp_rfcomm_handle(int fd, pa_bluetooth_transport *t, const char *buf
     if (c->state != 4) {
         pa_log_error("HFP negotiation failed in state %d with inbound %s\n",
                      c->state, buf);
-        rfcomm_write(fd, "ERROR");
+        rfcomm_write(fd, "\r\nERROR\r\n");
         return false;
     }
 
@@ -485,6 +488,7 @@ static void rfcomm_io_callback(pa_mainloop_api *io, pa_io_event *e, int fd, pa_i
         ssize_t len;
         int gain, dummy;
         bool  do_reply = false;
+        struct hfp_config *c = t->config;
 
         len = pa_read(fd, buf, 511, NULL);
         if (len < 0) {
@@ -503,17 +507,22 @@ static void rfcomm_io_callback(pa_mainloop_api *io, pa_io_event *e, int fd, pa_i
          * is changed on the AG side.
          * AT+CKPD=200: Sent by HS when headset button is pressed.
          * RING: Sent by AG to HS to notify of an incoming call. It can safely be ignored because
-         * it does not expect a reply. */
-        if (sscanf(buf, "AT+VGS=%d", &gain) == 1 || sscanf(buf, "\r\n+VGM=%d\r\n", &gain) == 1) {
+         * it does not expect a reply.
+         *
+         * Also in HFP we need to handle negotiation, including codec updating by the HG */
+        if (sscanf(buf, "AT+VGS=%d", &gain) == 1 || sscanf(buf, "\r\n+VGM%*[=:]%d\r\n", &gain) == 1) {
             t->speaker_gain = gain;
             pa_hook_fire(pa_bluetooth_discovery_hook(t->device->discovery, PA_BLUETOOTH_HOOK_TRANSPORT_SPEAKER_GAIN_CHANGED), t);
             do_reply = true;
-
-        } else if (sscanf(buf, "AT+VGM=%d", &gain) == 1 || sscanf(buf, "\r\n+VGS=%d\r\n", &gain) == 1) {
+        } else if (sscanf(buf, "AT+VGM=%d", &gain) == 1 || sscanf(buf, "\r\n+VGS%*[=:]%d\r\n", &gain) == 1) {
+            c->mic_gain_supported = true;
             t->microphone_gain = gain;
             pa_hook_fire(pa_bluetooth_discovery_hook(t->device->discovery, PA_BLUETOOTH_HOOK_TRANSPORT_MICROPHONE_GAIN_CHANGED), t);
             do_reply = true;
         } else if (sscanf(buf, "AT+CKPD=%d", &dummy) == 1) {
+            do_reply = true;
+        } else if (pa_startswith(buf, "AT+NREC=0") == 1) {
+            /* TODO: Handle disabling echo cancelation if active */
             do_reply = true;
         } else if (t->config) { /* t->config is only non-null for hfp profile */
             do_reply = hfp_rfcomm_handle(fd, t, buf);
@@ -573,6 +582,9 @@ static void set_speaker_gain(pa_bluetooth_transport *t, uint16_t gain) {
         t->profile == PA_BLUETOOTH_PROFILE_HFP_HF) {
         len = sprintf(buf, "\r\n+VGS=%d\r\n", gain);
         pa_log_debug("RFCOMM >> +VGS=%d", gain);
+    } else if (t->profile == PA_BLUETOOTH_PROFILE_HFP_HF) {
+        len = sprintf(buf, "\r\n+VGS:%d\r\n", gain);
+        pa_log_debug("RFCOMM >> +VGS:%d", gain);
     } else {
         len = sprintf(buf, "\r\nAT+VGM=%d\r\n", gain);
         pa_log_debug("RFCOMM >> AT+VGM=%d", gain);
@@ -601,6 +613,9 @@ static void set_microphone_gain(pa_bluetooth_transport *t, uint16_t gain) {
         t->profile == PA_BLUETOOTH_PROFILE_HFP_HF) {
         len = sprintf(buf, "\r\n+VGM=%d\r\n", gain);
         pa_log_debug("RFCOMM >> +VGM=%d", gain);
+    } else if (t->profile == PA_BLUETOOTH_PROFILE_HFP_HF) {
+        len = sprintf(buf, "\r\n+VGM:%d\r\n", gain);
+        pa_log_debug("RFCOMM >> +VGM:%d", gain);
     } else {
         len = sprintf(buf, "\r\nAT+VGS=%d\r\n", gain);
         pa_log_debug("RFCOMM >> AT+VGS=%d", gain);

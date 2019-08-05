@@ -146,6 +146,13 @@ static inline void pa_bluetooth_ofono_backend_free(pa_bluetooth_backend *b) {}
 pa_bluetooth_backend *pa_bluetooth_native_backend_new(pa_core *c, pa_bluetooth_discovery *y, bool enable_hs_role);
 void pa_bluetooth_native_backend_free(pa_bluetooth_backend *b);
 void pa_bluetooth_native_backend_enable_hs_role(pa_bluetooth_backend *b, bool enable_hs_role);
+
+struct hfp_config {
+    uint32_t capabilities;
+    int state;
+    bool speaker_gain_supported;
+    bool mic_gain_supported;
+};
 #else
 static inline pa_bluetooth_backend *pa_bluetooth_native_backend_new(pa_core *c, pa_bluetooth_discovery *y, bool enable_hs_role) {
     return NULL;
