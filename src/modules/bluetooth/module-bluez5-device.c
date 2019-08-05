@@ -934,11 +934,14 @@ static void source_set_volume_cb(pa_source *s) {
     uint16_t gain;
     pa_volume_t volume;
     struct userdata *u;
+    bool softonly;
+    struct hfp_config *c;
 
     pa_assert(s);
     pa_assert(s->core);
 
     u = s->userdata;
+    c = u->transport->config;
 
     pa_assert(u);
     pa_assert(u->source == s);
@@ -959,15 +962,17 @@ static void source_set_volume_cb(pa_source *s) {
 
     pa_cvolume_set(&s->real_volume, u->decoder_sample_spec.channels, volume);
 
-    /* Set soft volume when in headset role */
-    if (u->profile == PA_BLUETOOTH_PROFILE_HSP_AG ||
+    softonly = (u->profile == PA_BLUETOOTH_PROFILE_HFP_HF && !c->mic_gain_supported);
+    if (softonly ||
+        u->profile == PA_BLUETOOTH_PROFILE_HSP_AG ||
         u->profile == PA_BLUETOOTH_PROFILE_HFP_AG)
         pa_cvolume_set(&s->soft_volume, u->decoder_sample_spec.channels, volume);
 
     /* If we are in the AG role, we send a command to the head set to change
      * the microphone gain. In the HS role, source and sink are swapped, so
      * in this case we notify the AG that the speaker gain has changed */
-    u->transport->set_microphone_gain(u->transport, gain);
+    if (!softonly)
+        u->transport->set_microphone_gain(u->transport, gain);
 }
 
 /* Run from main thread */
@@ -1125,11 +1130,14 @@ static void sink_set_volume_cb(pa_sink *s) {
     uint16_t gain;
     pa_volume_t volume;
     struct userdata *u;
+    bool softonly;
+    struct hfp_config *c;
 
     pa_assert(s);
     pa_assert(s->core);
 
     u = s->userdata;
+    c = u->transport->config;
 
     pa_assert(u);
     pa_assert(u->sink == s);
@@ -1150,15 +1158,19 @@ static void sink_set_volume_cb(pa_sink *s) {
 
     pa_cvolume_set(&s->real_volume, u->encoder_sample_spec.channels, volume);
 
-    /* Set soft volume when in headset role */
-    if (u->profile == PA_BLUETOOTH_PROFILE_HSP_AG ||
+    /* Set soft volume when in headset role or when in Audio Gateway mode and
+       the headset/handsfree does not support remote volume control */
+    softonly = (u->profile == PA_BLUETOOTH_PROFILE_HFP_HF && !c->mic_gain_supported);
+    if (softonly ||
+        u->profile == PA_BLUETOOTH_PROFILE_HSP_AG ||
         u->profile == PA_BLUETOOTH_PROFILE_HFP_AG)
         pa_cvolume_set(&s->soft_volume, u->encoder_sample_spec.channels, volume);
 
     /* If we are in the AG role, we send a command to the head set to change
      * the speaker gain. In the HS role, source and sink are swapped, so
      * in this case we notify the AG that the microphone gain has changed */
-    u->transport->set_speaker_gain(u->transport, gain);
+    if (!softonly)
+        u->transport->set_speaker_gain(u->transport, gain);
 }
 
 /* Run from main thread */
@@ -2233,7 +2245,8 @@ static pa_hook_result_t transport_speaker_gain_changed_cb(pa_bluetooth_discovery
         volume++;
 
     pa_cvolume_set(&v, u->encoder_sample_spec.channels, volume);
-    if (t->profile == PA_BLUETOOTH_PROFILE_HSP_HS)
+    if (t->profile == PA_BLUETOOTH_PROFILE_HSP_HS ||
+        t->profile == PA_BLUETOOTH_PROFILE_HFP_HF)
         pa_sink_volume_changed(u->sink, &v);
     else
         pa_sink_set_volume(u->sink, &v, true, true);
@@ -2261,7 +2274,8 @@ static pa_hook_result_t transport_microphone_gain_changed_cb(pa_bluetooth_discov
 
     pa_cvolume_set(&v, u->decoder_sample_spec.channels, volume);
 
-    if (t->profile == PA_BLUETOOTH_PROFILE_HSP_HS)
+    if (t->profile == PA_BLUETOOTH_PROFILE_HSP_HS ||
+        t->profile == PA_BLUETOOTH_PROFILE_HFP_HF)
         pa_source_volume_changed(u->source, &v);
     else
         pa_source_set_volume(u->source, &v, true, true);
